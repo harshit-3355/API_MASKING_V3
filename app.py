@@ -184,8 +184,6 @@ def proxy():
         if is_admin:
             return jsonify(full_data)
         else:
-            if isinstance(full_data, dict) and "data" in full_data:
-                full_data["data"] = full_data["data"][:3]
             return jsonify(full_data)
 
     except Exception as e:
