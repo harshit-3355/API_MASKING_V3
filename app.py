@@ -20,7 +20,7 @@ def random_password(length=12):
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
     try:
-        read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/840630?api_version=2021.08"
+        read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841280?api_version=2021.08"
         res = requests.get(read_url)
         res.raise_for_status()
         rows = res.json().get("data", [])
@@ -60,7 +60,7 @@ def generate_all():
                 "BASE_URI": base_uri,
                 "UPDATED_URI": updated_uri,
                 "ADMIN_USERNAME": random_username("admin"),
-                "ADMIN_PASSWORD": random_password(),
+                "ADMIN_PASSWORD": "713SRo3y",
                 "PUBLIC_USERNAME": random_username("user"),
                 "PUBLIC_PASSWORD": random_password()
             }
@@ -83,7 +83,7 @@ def generate_all():
 # 🔄 JS-Style Update Payload
 def update_table_data(data_list):
     account_name = 'demo'
-    table_id = '840630'
+    table_id = '841280'
     update_url = f"https://ciparthenon-api.azurewebsites.net/apiRequest?account={account_name}&route=data/{table_id}/update?api_version=2022.01"
 
     for data in data_list:
@@ -151,7 +151,7 @@ def proxy():
         global cached_rows
         if not cached_rows:
             # Fallback load in case /generate_all wasn't called
-            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/840630?api_version=2021.08"
+            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841280?api_version=2021.08"
             res = requests.get(read_url)
             res.raise_for_status()
             rows = res.json().get("data", [])
