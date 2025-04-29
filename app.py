@@ -4,8 +4,10 @@ import base64
 import json
 import random
 import string
+from flasgger import Swagger  # 🆕 ADD THIS LINE
 
 app = Flask(__name__)
+swagger = Swagger(app)  # 🆕 Initialize Swagger after app creation
 
 cached_rows = []
 
@@ -15,6 +17,18 @@ def random_password(length=12):
 
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
+    """
+    Generate or Update Client Credentials and Routing URIs
+    ---
+    get:
+      summary: Generate or Update Client Credentials
+      description: Fetches backend data, generates missing credentials for clients, and updates the database.
+      responses:
+        200:
+          description: Credentials generated and table updated
+        500:
+          description: Internal server error
+    """
     try:
         read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
         res = requests.get(read_url)
@@ -33,8 +47,20 @@ def generate_all():
 
         base_application_url = request.host_url.rstrip('/')
 
-        # Cache for CLIENT -> Credentials
         client_credentials = {}
+        for row in rows:
+            client = row.get("CLIENT", "public")
+            if all([
+                row.get("ADMIN_USERNAME"),
+                row.get("ADMIN_PASSWORD"),
+                row.get("PUBLIC_USERNAME"),
+                row.get("PUBLIC_PASSWORD")
+            ]):
+                client_credentials[client] = {
+                    "ADMIN_USERNAME": row["ADMIN_USERNAME"],
+                    "ADMIN_PASSWORD": row["ADMIN_PASSWORD"],
+                    "PUBLIC_PASSWORD": row["PUBLIC_PASSWORD"]
+                }
 
         for base_uri, row in base_uri_to_row.items():
             already_set = all([
@@ -55,7 +81,6 @@ def generate_all():
                 admin_password = random_password()
                 public_password = random_password()
 
-                # Ensure PUBLIC != ADMIN
                 while public_password == admin_password:
                     public_password = random_password()
 
@@ -74,7 +99,7 @@ def generate_all():
                 "UPDATED_URI": updated_uri,
                 "ADMIN_USERNAME": creds["ADMIN_USERNAME"],
                 "ADMIN_PASSWORD": creds["ADMIN_PASSWORD"],
-                "PUBLIC_USERNAME": client,  # CLIENT == PUBLIC_USERNAME
+                "PUBLIC_USERNAME": client,
                 "PUBLIC_PASSWORD": creds["PUBLIC_PASSWORD"],
                 "PARAMETER": parameter,
                 "CLIENT": client
@@ -141,6 +166,40 @@ def update_table_data(data_list):
 
 @app.route('/demo/<parameter>', methods=['GET'])
 def proxy(parameter):
+    """
+    Proxy Dataset via Authentication and Optional Filtering
+    ---
+    get:
+      summary: Proxy and Filter Dataset
+      description: Authenticates using Basic Auth and optionally filters dataset fields based on query parameters.
+      parameters:
+        - name: parameter
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: filter_fields
+          in: query
+          required: false
+          schema:
+            type: object
+      responses:
+        200:
+          description: Filtered dataset
+        400:
+          description: Bad request or missing auth
+        401:
+          description: Unauthorized
+        404:
+          description: No matching parameter
+        500:
+          description: Server error
+    """
     try:
         auth = request.headers.get("Authorization")
         if not auth or not auth.startswith("Basic "):
@@ -185,7 +244,28 @@ def proxy(parameter):
         res = requests.get(target_uri)
         res.raise_for_status()
 
-        return jsonify(res.json())
+        full_data = res.json()
+        query_params = request.args.to_dict()
+
+        if isinstance(full_data, dict) and "data" in full_data:
+            original_records = full_data["data"]
+            filtered_data = []
+            for record in original_records:
+                match = True
+                for key, value in query_params.items():
+                    allowed_values = [v.strip().lower() for v in value.split(",")]
+                    record_value = str(record.get(key, "")).strip().lower()
+                    if record_value not in allowed_values:
+                        match = False
+                        break
+                if match:
+                    filtered_data.append(record)
+
+            final_response = {"data": filtered_data}
+        else:
+            final_response = full_data
+
+        return jsonify(final_response)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
