@@ -4,10 +4,8 @@ import base64
 import json
 import random
 import string
-from flasgger import Swagger  # 🆕 ADD THIS LINE
 
 app = Flask(__name__)
-swagger = Swagger(app)  # 🆕 Initialize Swagger after app creation
 
 cached_rows = []
 
@@ -17,18 +15,6 @@ def random_password(length=12):
 
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
-    """
-    Generate or Update Client Credentials and Routing URIs
-    ---
-    get:
-      summary: Generate or Update Client Credentials
-      description: Fetches backend data, generates missing credentials for clients, and updates the database.
-      responses:
-        200:
-          description: Credentials generated and table updated
-        500:
-          description: Internal server error
-    """
     try:
         read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
         res = requests.get(read_url)
@@ -166,40 +152,6 @@ def update_table_data(data_list):
 
 @app.route('/demo/<parameter>', methods=['GET'])
 def proxy(parameter):
-    """
-    Proxy Dataset via Authentication and Optional Filtering
-    ---
-    get:
-      summary: Proxy and Filter Dataset
-      description: Authenticates using Basic Auth and optionally filters dataset fields based on query parameters.
-      parameters:
-        - name: parameter
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: Authorization
-          in: header
-          required: true
-          schema:
-            type: string
-        - name: filter_fields
-          in: query
-          required: false
-          schema:
-            type: object
-      responses:
-        200:
-          description: Filtered dataset
-        400:
-          description: Bad request or missing auth
-        401:
-          description: Unauthorized
-        404:
-          description: No matching parameter
-        500:
-          description: Server error
-    """
     try:
         auth = request.headers.get("Authorization")
         if not auth or not auth.startswith("Basic "):
