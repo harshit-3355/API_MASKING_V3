@@ -61,8 +61,8 @@ def generate_all():
                 "UPDATED_URI": updated_uri,
                 "ADMIN_USERNAME": "admin",
                 "ADMIN_PASSWORD": "713SRo3y",
-                "PUBLIC_USERNAME": random_username("user"),
-                "PUBLIC_PASSWORD": random_password()
+                "PUBLIC_USERNAME": "Xiphi",
+                "PUBLIC_PASSWORD": "iN160Xoo"
             }
 
             update_data_list.append(new_data)
