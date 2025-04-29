@@ -1,17 +1,13 @@
 from flask import Flask, request, jsonify, Response
-from cryptography.fernet import Fernet
 import requests
-import urllib.parse
-import random
-import string
 import base64
 import json
+import random
+import string
 
 app = Flask(__name__)
 
 cached_rows = []
-def random_username(prefix):
-    return f"{prefix}_{''.join(random.choices(string.ascii_lowercase, k=6))}"
 
 def random_password(length=12):
     safe_chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
@@ -20,7 +16,7 @@ def random_password(length=12):
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
     try:
-        read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841280?api_version=2021.08"
+        read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
         res = requests.get(read_url)
         res.raise_for_status()
         rows = res.json().get("data", [])
@@ -35,6 +31,11 @@ def generate_all():
         global cached_rows
         cached_rows = []
 
+        base_application_url = request.host_url.rstrip('/')
+
+        # Cache for CLIENT -> Credentials
+        client_credentials = {}
+
         for base_uri, row in base_uri_to_row.items():
             already_set = all([
                 row.get("UPDATED_URI"),
@@ -47,22 +48,36 @@ def generate_all():
                 cached_rows.append(row)
                 continue
 
-            # 🔐 Generate encrypted URI
-            key = Fernet.generate_key()
-            fernet = Fernet(key)
-            encrypted_token = fernet.encrypt(base_uri.encode()).decode()
-            token_param = urllib.parse.quote(encrypted_token)
-            key_param = urllib.parse.quote(key.decode())
-            updated_uri = f"{request.host_url}demo?token={token_param}&key={key_param}"
+            client = row.get("CLIENT", "public")
 
-            # 🔧 New credentials
+            if client not in client_credentials:
+                admin_username = "admin_" + ''.join(random.choices(string.ascii_lowercase, k=6))
+                admin_password = random_password()
+                public_password = random_password()
+
+                # Ensure PUBLIC != ADMIN
+                while public_password == admin_password:
+                    public_password = random_password()
+
+                client_credentials[client] = {
+                    "ADMIN_USERNAME": admin_username,
+                    "ADMIN_PASSWORD": admin_password,
+                    "PUBLIC_PASSWORD": public_password
+                }
+
+            creds = client_credentials[client]
+            parameter = row.get("PARAMETER")
+            updated_uri = f"{base_application_url}/demo/{parameter}" if parameter else ""
+
             new_data = {
                 "BASE_URI": base_uri,
                 "UPDATED_URI": updated_uri,
-                "ADMIN_USERNAME": "admin",
-                "ADMIN_PASSWORD": "713SRo3y",
-                "PUBLIC_USERNAME": "Xiphi",
-                "PUBLIC_PASSWORD": "iN160Xoo"
+                "ADMIN_USERNAME": creds["ADMIN_USERNAME"],
+                "ADMIN_PASSWORD": creds["ADMIN_PASSWORD"],
+                "PUBLIC_USERNAME": client,  # CLIENT == PUBLIC_USERNAME
+                "PUBLIC_PASSWORD": creds["PUBLIC_PASSWORD"],
+                "PARAMETER": parameter,
+                "CLIENT": client
             }
 
             update_data_list.append(new_data)
@@ -79,11 +94,9 @@ def generate_all():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# 🔄 JS-Style Update Payload
 def update_table_data(data_list):
     account_name = 'demo'
-    table_id = '841280'
+    table_id = '841492'
     update_url = f"https://ciparthenon-api.azurewebsites.net/apiRequest?account={account_name}&route=data/{table_id}/update?api_version=2022.01"
 
     for data in data_list:
@@ -126,15 +139,9 @@ def update_table_data(data_list):
         except Exception as e:
             print(f"❌ Exception for {data['BASE_URI']}:", str(e))
 
-
-@app.route('/demo', methods=['GET'])
-def proxy():
+@app.route('/demo/<parameter>', methods=['GET'])
+def proxy(parameter):
     try:
-        token = request.args.get("token")
-        key = request.args.get("key")
-        if not token or not key:
-            return jsonify({"error": "Missing token or key"}), 400
-
         auth = request.headers.get("Authorization")
         if not auth or not auth.startswith("Basic "):
             return Response(
@@ -146,12 +153,9 @@ def proxy():
         decoded_credentials = base64.b64decode(encoded_credentials).decode()
         username, password = decoded_credentials.split(":", 1)
 
-        decrypted_uri = Fernet(key.encode()).decrypt(urllib.parse.unquote(token).encode()).decode()
-
         global cached_rows
         if not cached_rows:
-            # Fallback load in case /generate_all wasn't called
-            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841280?api_version=2021.08"
+            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
             res = requests.get(read_url)
             res.raise_for_status()
             rows = res.json().get("data", [])
@@ -163,10 +167,10 @@ def proxy():
                 r.get("ADMIN_USERNAME"),
                 r.get("ADMIN_PASSWORD")
             ])]
-        
-        matched_row = next((r for r in cached_rows if r["BASE_URI"] == decrypted_uri), None)
+
+        matched_row = next((r for r in cached_rows if r.get("PARAMETER") == parameter), None)
         if not matched_row:
-            return jsonify({"error": "Matching BASE_URI not found"}), 404
+            return jsonify({"error": f"No matching PARAMETER {parameter} found"}), 404
 
         is_admin = (username == matched_row["ADMIN_USERNAME"] and password == matched_row["ADMIN_PASSWORD"])
         is_public = (username == matched_row["PUBLIC_USERNAME"] and password == matched_row["PUBLIC_PASSWORD"])
@@ -177,14 +181,11 @@ def proxy():
                 {"WWW-Authenticate": 'Basic realm="Login Required"'}
             )
 
-        res = requests.get(decrypted_uri)
+        target_uri = matched_row.get("BASE_URI")
+        res = requests.get(target_uri)
         res.raise_for_status()
-        full_data = res.json()
 
-        if is_admin:
-            return jsonify(full_data)
-        else:
-            return jsonify(full_data)
+        return jsonify(res.json())
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
