@@ -59,7 +59,7 @@ def generate_all():
             new_data = {
                 "BASE_URI": base_uri,
                 "UPDATED_URI": updated_uri,
-                "ADMIN_USERNAME": random_username("admin"),
+                "ADMIN_USERNAME": "admin",
                 "ADMIN_PASSWORD": "713SRo3y",
                 "PUBLIC_USERNAME": random_username("user"),
                 "PUBLIC_PASSWORD": random_password()
