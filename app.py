@@ -16,10 +16,24 @@ def random_password(length=12):
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
     try:
-        read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
-        res = requests.get(read_url)
-        res.raise_for_status()
-        rows = res.json().get("data", [])
+        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492"
+        api_version = "2021.08"
+        limit = 1000
+        offset = 0
+        rows = []
+
+        # Handle pagination
+        while True:
+            paged_url = f"{base_url}?limit={limit}&offset={offset}&api_version={api_version}"
+            res = requests.get(paged_url)
+            res.raise_for_status()
+            batch = res.json().get("data", [])
+            if not batch:
+                break
+            rows.extend(batch)
+            offset += len(batch)
+
+        print(f"🔄 Total rows fetched: {len(rows)}")
 
         base_uri_to_row = {}
         for row in rows:
@@ -32,8 +46,8 @@ def generate_all():
         cached_rows = []
 
         base_application_url = request.host_url.rstrip('/')
-
         client_credentials = {}
+
         for row in rows:
             client = row.get("CLIENT", "public")
             if all([
@@ -104,6 +118,7 @@ def generate_all():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 def update_table_data(data_list):
     account_name = 'demo'
