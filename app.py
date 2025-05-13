@@ -216,15 +216,24 @@ def proxy(parameter):
         full_data = res.json()
         query_params = request.args.to_dict()
 
+        # New unified logic
+        original_records = []
+
         if isinstance(full_data, dict) and "data" in full_data:
             original_records = full_data["data"]
+        elif isinstance(full_data, list):
+            original_records = full_data
+
+        # If we have filter params, apply them
+        if query_params and original_records:
+            query = {k: [v.strip() for v in val.split(",")] for k, val in query_params.items()}
+
             filtered_data = []
             for record in original_records:
                 match = True
-                for key, value in query_params.items():
-                    allowed_values = [v.strip().lower() for v in value.split(",")]
-                    record_value = str(record.get(key, "")).strip().lower()
-                    if record_value not in allowed_values:
+                for key, values in query.items():
+                    record_val = str(record.get(key, "")).strip()
+                    if record_val not in values:
                         match = False
                         break
                 if match:
@@ -232,7 +241,10 @@ def proxy(parameter):
 
             final_response = {"data": filtered_data}
         else:
-            final_response = full_data
+            # If no filtering or data not found, return original as-is
+            final_response = {"data": original_records} if isinstance(original_records, list) else full_data
+
+
 
         return jsonify(final_response)
 
