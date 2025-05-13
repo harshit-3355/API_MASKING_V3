@@ -16,22 +16,12 @@ def random_password(length=12):
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
     try:
-        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492"
-        api_version = "2021.08"
-        limit = 1000
-        offset = 0
-        rows = []
-
-        # Handle pagination
-        while True:
-            paged_url = f"{base_url}?limit={limit}&offset={offset}&api_version={api_version}"
-            res = requests.get(paged_url)
-            res.raise_for_status()
-            batch = res.json().get("data", [])
-            if not batch:
-                break
-            rows.extend(batch)
-            offset += len(batch)
+        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
+        
+        # Fetch all rows in a single request
+        res = requests.get(base_url)
+        res.raise_for_status()
+        rows = res.json().get("data", [])
 
         print(f"🔄 Total rows fetched: {len(rows)}")
 
@@ -56,6 +46,7 @@ def generate_all():
                 row.get("PUBLIC_USERNAME"),
                 row.get("PUBLIC_PASSWORD")
             ]):
+                print(f"🔁 Reusing credentials for client: {client}")
                 client_credentials[client] = {
                     "ADMIN_USERNAME": row["ADMIN_USERNAME"],
                     "ADMIN_PASSWORD": row["ADMIN_PASSWORD"],
@@ -71,12 +62,14 @@ def generate_all():
                 row.get("ADMIN_PASSWORD")
             ])
             if already_set:
+                print(f"✅ Already set, skipping BASE_URI: {base_uri}")
                 cached_rows.append(row)
                 continue
 
             client = row.get("CLIENT", "public")
 
             if client not in client_credentials:
+                print(f"🔐 Generating credentials for new client: {client}")
                 admin_username = "admin_" + ''.join(random.choices(string.ascii_lowercase, k=6))
                 admin_password = random_password()
                 public_password = random_password()
@@ -92,7 +85,11 @@ def generate_all():
 
             creds = client_credentials[client]
             parameter = row.get("PARAMETER")
-            updated_uri = f"{base_application_url}/demo/{parameter}" if parameter else ""
+            if not parameter:
+                print(f"⚠️ Skipping row with empty parameter. BASE_URI: {base_uri}")
+                continue
+
+            updated_uri = f"{base_application_url}/demo/{parameter}"
 
             new_data = {
                 "BASE_URI": base_uri,
@@ -105,11 +102,15 @@ def generate_all():
                 "CLIENT": client
             }
 
+            print(f"🆕 Adding to update list: BASE_URI={base_uri}, PARAMETER={parameter}")
             update_data_list.append(new_data)
             cached_rows.append(new_data)
 
         if update_data_list:
+            print(f"📤 Updating {len(update_data_list)} row(s) in table.")
             update_table_data(update_data_list)
+        else:
+            print("🚫 No rows to update.")
 
         return jsonify({
             "inserted": update_data_list,
@@ -117,6 +118,7 @@ def generate_all():
         })
 
     except Exception as e:
+        print(f"❌ Exception in /generate_all: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
