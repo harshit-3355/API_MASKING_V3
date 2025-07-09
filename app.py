@@ -4,19 +4,19 @@ import base64
 import json
 import random
 import string
-
+ 
 app = Flask(__name__)
-
+ 
 cached_rows = []
-
+ 
 def random_password(length=12):
     safe_chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
     return ''.join(random.choices(safe_chars, k=length))
-
+ 
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
     try:
-        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
+        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/843826?api_version=2021.08"
         
         # Fetch all rows in a single request
         res = requests.get(base_url)
@@ -25,35 +25,39 @@ def generate_all():
 
         print(f"🔄 Total rows fetched: {len(rows)}")
 
-        base_uri_to_row = {}
-        for row in rows:
-            base_uri = row.get("BASE_URI")
-            if base_uri:
-                base_uri_to_row[base_uri] = row
-
-        update_data_list = []
+        client_param_to_row = {}
+        client_credentials = {}
         global cached_rows
         cached_rows = []
-
+        update_data_list = []
         base_application_url = request.host_url.rstrip('/')
-        client_credentials = {}
 
+        # 1. First pass: Find and store credentials for each client if any row has them
         for row in rows:
             client = row.get("CLIENT", "public")
+            parameter = row.get("PARAMETER")
+            if not client or not parameter:
+                continue
+            key = (client, parameter)
+            client_param_to_row[key] = row
+
+            # If this row has credentials, store them for the client (if not already stored)
             if all([
                 row.get("ADMIN_USERNAME"),
                 row.get("ADMIN_PASSWORD"),
                 row.get("PUBLIC_USERNAME"),
                 row.get("PUBLIC_PASSWORD")
             ]):
-                print(f"🔁 Reusing credentials for client: {client}")
-                client_credentials[client] = {
-                    "ADMIN_USERNAME": row["ADMIN_USERNAME"],
-                    "ADMIN_PASSWORD": row["ADMIN_PASSWORD"],
-                    "PUBLIC_PASSWORD": row["PUBLIC_PASSWORD"]
-                }
+                if client not in client_credentials:
+                    client_credentials[client] = {
+                        "ADMIN_USERNAME": row["ADMIN_USERNAME"],
+                        "ADMIN_PASSWORD": row["ADMIN_PASSWORD"],
+                        "PUBLIC_USERNAME": row["PUBLIC_USERNAME"],
+                        "PUBLIC_PASSWORD": row["PUBLIC_PASSWORD"]
+                    }
 
-        for base_uri, row in base_uri_to_row.items():
+        # 2. Second pass: Generate credentials for clients that don't have any
+        for (client, parameter), row in client_param_to_row.items():
             already_set = all([
                 row.get("UPDATED_URI"),
                 row.get("PUBLIC_USERNAME"),
@@ -62,47 +66,41 @@ def generate_all():
                 row.get("ADMIN_PASSWORD")
             ])
             if already_set:
-                print(f"✅ Already set, skipping BASE_URI: {base_uri}")
+                print(f"✅ Already set, skipping BASE_URI: {row['BASE_URI']}")
                 cached_rows.append(row)
                 continue
 
-            client = row.get("CLIENT", "public")
-
+            # If client doesn't have credentials, generate and store them
             if client not in client_credentials:
-                print(f"🔐 Generating credentials for new client: {client}")
+                print(f"🔐 Generating credentials for client: {client}")
                 admin_username = "admin_" + ''.join(random.choices(string.ascii_lowercase, k=6))
                 admin_password = random_password()
+                public_username = client  # Use client as public username
                 public_password = random_password()
-
                 while public_password == admin_password:
                     public_password = random_password()
-
                 client_credentials[client] = {
                     "ADMIN_USERNAME": admin_username,
                     "ADMIN_PASSWORD": admin_password,
+                    "PUBLIC_USERNAME": public_username,
                     "PUBLIC_PASSWORD": public_password
                 }
 
             creds = client_credentials[client]
-            parameter = row.get("PARAMETER")
-            if not parameter:
-                print(f"⚠️ Skipping row with empty parameter. BASE_URI: {base_uri}")
-                continue
 
-            updated_uri = f"{base_application_url}/demo/{parameter}"
-
+            updated_uri = f"{base_application_url}/{client}/{parameter}"
             new_data = {
-                "BASE_URI": base_uri,
+                "BASE_URI": row["BASE_URI"],
                 "UPDATED_URI": updated_uri,
                 "ADMIN_USERNAME": creds["ADMIN_USERNAME"],
                 "ADMIN_PASSWORD": creds["ADMIN_PASSWORD"],
-                "PUBLIC_USERNAME": client,
+                "PUBLIC_USERNAME": creds["PUBLIC_USERNAME"],
                 "PUBLIC_PASSWORD": creds["PUBLIC_PASSWORD"],
                 "PARAMETER": parameter,
                 "CLIENT": client
             }
 
-            print(f"🆕 Adding to update list: BASE_URI={base_uri}, PARAMETER={parameter}")
+            print(f"🆕 Adding to update list: BASE_URI={row['BASE_URI']}, PARAMETER={parameter}")
             update_data_list.append(new_data)
             cached_rows.append(new_data)
 
@@ -120,13 +118,14 @@ def generate_all():
     except Exception as e:
         print(f"❌ Exception in /generate_all: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
-
+ 
+ 
+ 
 def update_table_data(data_list):
     account_name = 'demo'
-    table_id = '841492'
+    table_id = '843826'
     update_url = f"https://ciparthenon-api.azurewebsites.net/apiRequest?account={account_name}&route=data/{table_id}/update?api_version=2022.01"
-
+ 
     for data in data_list:
         payload = {
             "multiple_rows": "all",
@@ -145,6 +144,16 @@ def update_table_data(data_list):
                                 "name": "BASE_URI",
                                 "comparator": "equals",
                                 "values": [data["BASE_URI"]]
+                            },
+                            {
+                                "name": "CLIENT",
+                                "comparator": "equals",
+                                "values": [data["CLIENT"]]
+                            },
+                            {
+                                "name": "PARAMETER",
+                                "comparator": "equals",
+                                "values": [data["PARAMETER"]]
                             }
                         ],
                         "operator": "and"
@@ -152,23 +161,23 @@ def update_table_data(data_list):
                 ]
             }
         }
-
+ 
         try:
             response = requests.post(
                 update_url,
                 headers={'Content-Type': 'application/json'},
                 data=json.dumps(payload)
             )
-
+ 
             if response.ok:
-                print(f"✅ Updated BASE_URI {data['BASE_URI']}")
+                print(f"✅ Updated BASE_URI {data['BASE_URI']} for CLIENT {data['CLIENT']} PARAMETER {data['PARAMETER']}")
             else:
-                print(f"❌ Failed to update {data['BASE_URI']}: {response.status_code}, {response.text}")
+                print(f"❌ Failed to update {data['BASE_URI']} for CLIENT {data['CLIENT']} PARAMETER {data['PARAMETER']}: {response.status_code}, {response.text}")
         except Exception as e:
-            print(f"❌ Exception for {data['BASE_URI']}:", str(e))
-
-@app.route('/demo/<parameter>', methods=['GET'])
-def proxy(parameter):
+            print(f"❌ Exception for {data['BASE_URI']} (CLIENT {data['CLIENT']} PARAMETER {data['PARAMETER']}):", str(e))
+ 
+@app.route('/<client>/<parameter>', methods=['GET'])
+def proxy(client, parameter):
     try:
         auth = request.headers.get("Authorization")
         if not auth or not auth.startswith("Basic "):
@@ -176,14 +185,14 @@ def proxy(parameter):
                 "Authentication required", 401,
                 {"WWW-Authenticate": 'Basic realm="Login Required"'}
             )
-
+ 
         encoded_credentials = auth.split(" ")[1]
         decoded_credentials = base64.b64decode(encoded_credentials).decode()
         username, password = decoded_credentials.split(":", 1)
-
+ 
         global cached_rows
         if not cached_rows:
-            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
+            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/843826?api_version=2021.08"
             res = requests.get(read_url)
             res.raise_for_status()
             rows = res.json().get("data", [])
@@ -195,39 +204,42 @@ def proxy(parameter):
                 r.get("ADMIN_USERNAME"),
                 r.get("ADMIN_PASSWORD")
             ])]
-
-        matched_row = next((r for r in cached_rows if r.get("PARAMETER") == parameter), None)
+ 
+        matched_row = next(
+            (r for r in cached_rows if r.get("CLIENT") == client and r.get("PARAMETER") == parameter),
+            None
+        )
         if not matched_row:
             return jsonify({"error": f"No matching PARAMETER {parameter} found"}), 404
-
+ 
         is_admin = (username == matched_row["ADMIN_USERNAME"] and password == matched_row["ADMIN_PASSWORD"])
         is_public = (username == matched_row["PUBLIC_USERNAME"] and password == matched_row["PUBLIC_PASSWORD"])
-
+ 
         if not (is_admin or is_public):
             return Response(
                 "Invalid credentials", 401,
                 {"WWW-Authenticate": 'Basic realm="Login Required"'}
             )
-
+ 
         target_uri = matched_row.get("BASE_URI")
         res = requests.get(target_uri)
         res.raise_for_status()
-
+ 
         full_data = res.json()
         query_params = request.args.to_dict()
-
+ 
         # New unified logic
         original_records = []
-
+ 
         if isinstance(full_data, dict) and "data" in full_data:
             original_records = full_data["data"]
         elif isinstance(full_data, list):
             original_records = full_data
-
+ 
         # If we have filter params, apply them
         if query_params and original_records:
             query = {k: [v.strip() for v in val.split(",")] for k, val in query_params.items()}
-
+ 
             filtered_data = []
             for record in original_records:
                 match = True
@@ -238,18 +250,19 @@ def proxy(parameter):
                         break
                 if match:
                     filtered_data.append(record)
-
+ 
             final_response = {"data": filtered_data}
         else:
             # If no filtering or data not found, return original as-is
             final_response = {"data": original_records} if isinstance(original_records, list) else full_data
-
-
-
+ 
+ 
+ 
         return jsonify(final_response)
-
+ 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+ 
 if __name__ == '__main__':
     app.run(debug=True)
+ 

@@ -1,1 +1,1 @@
-This is the sorce code for masking a api.
+This is the source code for masking a api.
