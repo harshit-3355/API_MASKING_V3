@@ -16,7 +16,7 @@ def random_password(length=12):
 @app.route('/generate_all', methods=['GET'])
 def generate_all():
     try:
-        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/843826?api_version=2021.08"
+        base_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
         
         # Fetch all rows in a single request
         res = requests.get(base_url)
@@ -123,7 +123,7 @@ def generate_all():
  
 def update_table_data(data_list):
     account_name = 'demo'
-    table_id = '843826'
+    table_id = '841492'
     update_url = f"https://ciparthenon-api.azurewebsites.net/apiRequest?account={account_name}&route=data/{table_id}/update?api_version=2022.01"
  
     for data in data_list:
@@ -192,7 +192,7 @@ def proxy(client, parameter):
  
         global cached_rows
         if not cached_rows:
-            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/843826?api_version=2021.08"
+            read_url = "https://ciparthenon-api.azurewebsites.net/apiRequest?account=demo&route=table/841492?api_version=2021.08"
             res = requests.get(read_url)
             res.raise_for_status()
             rows = res.json().get("data", [])
