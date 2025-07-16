@@ -69,4 +69,3 @@ jobs:
           app-name: 'ci-ai-api'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D6318889809E475E98D4899A977820D2 }}
-          startup-command: 'gunicorn app:app --bind=0.0.0.0 --timeout 600 --workers 8'
