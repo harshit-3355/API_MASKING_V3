@@ -1,12 +1,19 @@
 from flask import Flask, request, jsonify, Response
+# from azure.monitor.opentelemetry import configure_azure_monitor
 import requests
 import base64
 import json
 import random
 import string
+import gunicorn
  
+
+# configure_azure_monitor(
+#     connection_string="InstrumentationKey=xxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx;IngestionEndpoint=https://..."
+# )
+
 app = Flask(__name__)
- 
+
 cached_rows = []
  
 def random_password(length=12):
@@ -264,5 +271,5 @@ def proxy(client, parameter):
         return jsonify({"error": str(e)}), 500
  
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, threaded=True)
  
