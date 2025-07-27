@@ -270,6 +270,13 @@ def proxy(client, parameter):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
  
+@app.after_request
+def set_csp_headers(response):
+    response.headers['Content-Security-Policy'] = "default-src 'none';"
+    response.headers['X-Content-Type-Options'] = "nosniff"
+    response.headers['Cache-Control'] = "no-store"
+    return response
+ 
 if __name__ == '__main__':
-    app.run(debug=True, threaded=True)
+    app.run(debug=False, threaded=True)
  
