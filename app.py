@@ -271,10 +271,11 @@ def proxy(client, parameter):
         return jsonify({"error": str(e)}), 500
  
 @app.after_request
-def set_csp_headers(response):
-    response.headers['Content-Security-Policy'] = "default-src 'none';"
+def set_security_headers(response):
+    response.headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'; form-action 'none';"
     response.headers['X-Content-Type-Options'] = "nosniff"
-    response.headers['Cache-Control'] = "no-store"
+    response.headers['Cache-Control'] = "no-cache, no-store, must-revalidate"
+    response.headers['Strict-Transport-Security'] = "max-age=63072000; includeSubDomains; preload"
     return response
  
 if __name__ == '__main__':
